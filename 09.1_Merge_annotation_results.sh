@@ -11,14 +11,14 @@
 
 set -euo pipefail
 
-INDIR=/scratch/dgohar/Prabh/eggnog_results_functional_annotation
-OUTFILE=$INDIR/merged_emapper_annotations_Prabh1.tsv
+INDIR=/scratch/dgohar/mohit_coverCrop/eggnong_annotations/
+OUTFILE=$INDIR/merged_emapper_annotations_Covercrop.tsv
 
 cd "$INDIR"
 
 first=1
 
-for file in zr30098_*.emapper.annotations; do
+for file in zr30102_*.emapper.annotations; do
     sample_id=$(basename "$file" .emapper.annotations)
 
     echo "Processing $sample_id"

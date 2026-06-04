@@ -18,58 +18,38 @@ conda activate sourmash_env
 BASE=/scratch/dgohar/NCBI_ref_genomes_chunked
 DBDIR=/scratch/dgohar/sourmash_ncbi_ref_db
 
-mkdir -p "$DBDIR"/{unzipped,genomes,sigs,db,logs}
+mkdir -p "$DBDIR"/{sigs,db}
 
 echo "Checking tools..."
 which sourmash
 sourmash --version
-which unzip
-unzip -v | head -n 2
 
-cd "$BASE"
-
-###############################################################################
-# Uncomment if rebuilding from downloaded zip files
-###############################################################################
-
-# echo "Checking zip files..."
-# for z in downloads/*.zip; do
-#     unzip -tq "$z" > /dev/null || echo "CORRUPTED: $z"
-# done
-
-# echo "Unzipping all chunks..."
-# for z in downloads/*.zip; do
-#     name=$(basename "$z" .zip)
-#
-#     if [ ! -d "$DBDIR/unzipped/$name" ]; then
-#         echo "Unzipping $name"
-#         unzip -q "$z" -d "$DBDIR/unzipped/$name"
-#     else
-#         echo "Already unzipped: $name"
-#     fi
-# done
-
-###############################################################################
-# IMPORTANT: use only genomic assemblies
-###############################################################################
-
-echo "Collecting genomic FASTA files only..."
+echo "Building clean genome file list..."
 
 find "$DBDIR/unzipped" \
-    -type f \
-    -name "*_genomic.fna" \
-    > "$DBDIR/genome_files.txt"
+    -type f \( -name "GCF_*_genomic.fna" -o -name "GCA_*_genomic.fna" \) \
+    | sort \
+    > "$DBDIR/genome_files.clean.txt"
 
-echo "Number of genomic assemblies:"
-wc -l "$DBDIR/genome_files.txt"
+echo "Number of genome assemblies being used:"
+GENOME_COUNT=$(wc -l < "$DBDIR/genome_files.clean.txt")
+echo "$GENOME_COUNT"
+
+echo "First few genomes:"
+head "$DBDIR/genome_files.clean.txt"
+
+if [ "$GENOME_COUNT" -eq 0 ]; then
+    echo "ERROR: No genome FASTA files found."
+    exit 1
+fi
 
 echo "Making sourmash signatures for k=21,31,51..."
 
 sourmash sketch dna \
     -p k=21,k=31,k=51,scaled=1000,abund \
     --name-from-first \
-    --from-file "$DBDIR/genome_files.txt" \
-    --output "$DBDIR/sigs/ncbi_ref_bacteria_fungi_k21_k31_k51.sig.zip"
+    --from-file "$DBDIR/genome_files.clean.txt" \
+    --output "$DBDIR/sigs/ncbi_ref_bacteria_fungi_clean_k21_k31_k51.sig.zip"
 
 echo "Creating separate databases..."
 
@@ -79,14 +59,11 @@ for k in 21 31 51; do
 
     sourmash sig cat \
         --ksize "$k" \
-        "$DBDIR/sigs/ncbi_ref_bacteria_fungi_k21_k31_k51.sig.zip" \
-        -o "$DBDIR/db/ncbi_ref_bacteria_fungi_k${k}.sig.zip"
+        "$DBDIR/sigs/ncbi_ref_bacteria_fungi_clean_k21_k31_k51.sig.zip" \
+        -o "$DBDIR/db/ncbi_ref_bacteria_fungi_clean_k${k}.sig.zip"
 
-    # Uncomment if SBT indexes are desired
-    #
-    # sourmash index \
-    #     "$DBDIR/db/ncbi_ref_bacteria_fungi_k${k}.sbt.zip" \
-    #     "$DBDIR/db/ncbi_ref_bacteria_fungi_k${k}.sig.zip"
+    echo "Summary for k=$k:"
+    sourmash sig summarize "$DBDIR/db/ncbi_ref_bacteria_fungi_clean_k${k}.sig.zip"
 
 done
 

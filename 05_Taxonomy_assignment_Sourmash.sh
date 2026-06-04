@@ -3,12 +3,12 @@
 #SBATCH --partition=work1
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
-#SBATCH --time=48:00:00
-#SBATCH --array=0-44
-#SBATCH --output=sourmash_%A_%a.out
-#SBATCH --error=sourmash_%A_%a.err
+#SBATCH --time=12:00:00
+#SBATCH --array=0-0
+#SBATCH --output=logs/sourmash_%A_%a.out
+#SBATCH --error=logs/sourmash_%A_%a.err
 
 set -euo pipefail
 
@@ -17,23 +17,24 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate sourmash_env
 
 # ====== CONFIG ======
-SAMPLE_LIST="/home/dgohar/samples.txt"
-OUT_DIR="/scratch/dgohar/Prabh/sourmash_results"
+INPUT_DIR="/scratch/dgohar/Prabh/bact_fung_filtered_reads_sdust"
+OUT_DIR="/scratch/dgohar/Prabh/sourmash_results_abundances"
 
-GTDB_DB="/scratch/dgohar/sourmash_db/gtdb-reps-rs226-k51.dna.zip"
-FUNGI_DB="/scratch/dgohar/sourmash_db/ncbi-euks-fungi-2025.01.dna.k=51.sig.zip"
+DB_DIR="/scratch/dgohar/sourmash_ncbi_ref_db/db"
+DB_K21="${DB_DIR}/ncbi_ref_bacteria_fungi_clean_k21.sig.zip"
+DB_K31="${DB_DIR}/ncbi_ref_bacteria_fungi_clean_k31.sig.zip"
+DB_K51="${DB_DIR}/ncbi_ref_bacteria_fungi_clean_k51.sig.zip"
 
 mkdir -p "${OUT_DIR}"
 
 # ====== GET SAMPLE FOR THIS ARRAY TASK ======
-SAMPLE_DIR=$(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" "${SAMPLE_LIST}")
+SAMPLE_DIR=$(find "${INPUT_DIR}" -mindepth 1 -maxdepth 1 -type d | sort -V | sed -n "$((SLURM_ARRAY_TASK_ID + 1))p")
 
 if [[ -z "${SAMPLE_DIR}" ]]; then
     echo "No sample found for array index ${SLURM_ARRAY_TASK_ID}"
     exit 1
 fi
 
-SAMPLE_DIR="${SAMPLE_DIR%/}"
 SAMPLE_ID=$(basename "${SAMPLE_DIR}")
 
 echo "Processing ${SAMPLE_ID}..."
@@ -50,32 +51,46 @@ if [[ ! -f "${R1}" || ! -f "${R2}" ]]; then
     exit 0
 fi
 
+for DB in "${DB_K21}" "${DB_K31}" "${DB_K51}"; do
+    if [[ ! -f "${DB}" ]]; then
+        echo "Missing database: ${DB}"
+        exit 1
+    fi
+done
+
 SAMPLE_OUT="${OUT_DIR}/${SAMPLE_ID}"
 mkdir -p "${SAMPLE_OUT}"
 
-SIG="${SAMPLE_OUT}/${SAMPLE_ID}.sig"
+SIG="${SAMPLE_OUT}/${SAMPLE_ID}.k21_k31_k51.sig"
 
-# ====== SKETCH ======
+# ====== SKETCH ALL THREE K-MERS ======
 sourmash sketch dna \
-    -p k=51,scaled=1000 \
+    -p k=21,scaled=1000,abund \
+    -p k=31,scaled=1000,abund \
+    -p k=51,scaled=1000,abund \
     --merge "${SAMPLE_ID}" \
     -o "${SIG}" \
     "${R1}" "${R2}"
 
-# ====== BACTERIA ======
+# ====== GATHER K21 ======
 sourmash gather \
     "${SIG}" \
-    "${GTDB_DB}" \
-    --ksize 51 \
-    --num-threads "$SLURM_CPUS_PER_TASK" \
-    -o "${SAMPLE_OUT}/${SAMPLE_ID}_bacteria.csv"
+    "${DB_K21}" \
+    --ksize 21 \
+    -o "${SAMPLE_OUT}/${SAMPLE_ID}_ncbi_bacteria_fungi_k21.csv"
 
-# ====== FUNGI ======
+# ====== GATHER K31 ======
 sourmash gather \
     "${SIG}" \
-    "${FUNGI_DB}" \
+    "${DB_K31}" \
+    --ksize 31 \
+    -o "${SAMPLE_OUT}/${SAMPLE_ID}_ncbi_bacteria_fungi_k31.csv"
+
+# ====== GATHER K51 ======
+sourmash gather \
+    "${SIG}" \
+    "${DB_K51}" \
     --ksize 51 \
-    --num-threads "$SLURM_CPUS_PER_TASK" \
-    -o "${SAMPLE_OUT}/${SAMPLE_ID}_fungi.csv"
+    -o "${SAMPLE_OUT}/${SAMPLE_ID}_ncbi_bacteria_fungi_k51.csv"
 
 echo "Done ${SAMPLE_ID}"

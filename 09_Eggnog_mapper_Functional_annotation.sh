@@ -4,7 +4,6 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G
 #SBATCH --time=72:00:00
-
 #SBATCH --output=logs/eggnog_%A_%a.out
 #SBATCH --error=logs/eggnog_%A_%a.err
 
